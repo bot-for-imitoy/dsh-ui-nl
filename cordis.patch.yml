@@ -1,0 +1,14 @@
+- insert:
+    - id: ui-nl
+      name: 'dsh-ui-nl'
+      config:
+        subagentProvider: spawn
+        workspace: ''
+        modelProvider: ''
+        model: ''
+        timeoutMs: 180000
+        maxSteps: 40
+        attachImages: true
+        enabledSessionIds: ''
+        allowedWorkspacePaths: ''
+        allowAllSessions: false

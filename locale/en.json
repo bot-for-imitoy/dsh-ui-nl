@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Natural-language UI operation",
+    "description": "Exposes one tool, ui_operate: the instruction is handed to a subagent that owns the numbered-image UI automation tools, so the subagent screenshots, clicks by index, re-screenshots and reports back; the screenshot is returned when the instruction asks to see the screen."
+  }
+}

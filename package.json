@@ -1,0 +1,48 @@
+{
+  "name": "dsh-ui-nl",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Natural-language UI operation for DSH: one tool (ui_operate) that hands an instruction to a subagent owning the numbered-image UI automation tools, then returns the subagent's report and, when asked, the screenshot.",
+  "license": "MIT",
+  "author": "bot-for-imitoy",
+  "homepage": "https://github.com/bot-for-imitoy/dsh-ui-nl#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bot-for-imitoy/dsh-ui-nl.git"
+  },
+  "bugs": {
+    "url": "https://github.com/bot-for-imitoy/dsh-ui-nl/issues"
+  },
+  "keywords": [
+    "dsh-plugin",
+    "dsh",
+    "ui-automation",
+    "natural-language",
+    "subagent",
+    "linux",
+    "x11"
+  ],
+  "exports": {
+    ".": "./index.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "lib",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}
