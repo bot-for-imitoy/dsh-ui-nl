@@ -144,7 +144,8 @@ describe('subagent delegation', () => {
     const spec = h.activations[0]
     assert.equal(spec.provider, 'spawn')
     assert.equal(spec.delivery, 'caller')
-    assert.equal(spec.maxDepth, 0)
+    // Depth 1 admits this child and refuses any grandchild.
+    assert.equal(spec.maxDepth, 1)
     assert.match(spec.childId, /^session-/)
     assert.deepEqual(spec.prompt, [{ type: 'text', text: spec.prompt[0].text }])
     assert.ok(spec.prompt[0].text.includes('点击「立即领取」'), '子代理 prompt 必须包含原始指令')
@@ -444,6 +445,33 @@ describe('step budget', () => {
   })
 })
 
+describe('tool takeover registration', () => {
+  test('默认接管：向 uiAutomationVisibility 注册抑制，卸载时释放', async () => {
+    const h = await createPluginHarness({ uiAutomationVisibility: {} })
+    assert.equal(h.suppressionCalls.length, 1)
+    assert.equal(h.suppressionCalls[0].key, 'ui-nl')
+    const applies = h.suppressionCalls[0].applies
+    // The predicate is this plugin's own gate.
+    assert.equal(applies('session-parent', h.parentAgent), true)
+    assert.equal(applies('session-outsider', { id: 'session-outsider', session: { header: { id: 'session-outsider' }, meta: {} } }), false)
+    // A subagent never matches the gate, so the six tools stay for the child.
+    assert.equal(applies('session-child', { id: 'session-child', session: { header: { origin: 'subagent' }, meta: {} } }), false)
+    h.disposeEffects()
+    assert.deepEqual(h.releases, ['ui-nl'])
+  })
+
+  test('hideUnderlyingTools=false 时不注册抑制', async () => {
+    const h = await createPluginHarness({ uiAutomationVisibility: {}, config: { hideUnderlyingTools: false } })
+    assert.equal(h.suppressionCalls.length, 0)
+  })
+
+  test('没有 uiAutomationVisibility 服务时（旧版 ui-automation）插件照常加载', async () => {
+    const h = await createPluginHarness()
+    assert.deepEqual(h.registrations.map(entry => entry.definition.name), ['ui_operate'])
+    assert.equal(h.suppressionCalls.length, 0)
+  })
+})
+
 describe('workspace gate', () => {
   test('允许工作区内的会话可见，工作区外不可见', async () => {
     const h = await createPluginHarness({
@@ -488,7 +516,9 @@ describe('config and prompt helpers', () => {
     assert.equal(config.allowAllSessions, false)
     assert.equal(config.subagentProvider, 'spawn')
     assert.equal(config.attachImages, true)
+    assert.equal(config.hideUnderlyingTools, true)
     assert.equal(readConfig({ attachImages: false }).attachImages, false)
+    assert.equal(readConfig({ hideUnderlyingTools: false }).hideUnderlyingTools, false)
     assert.equal(readConfig({ model: 'm', modelProvider: 'p' }).model, 'm')
   })
 

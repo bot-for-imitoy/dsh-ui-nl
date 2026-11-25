@@ -60,6 +60,7 @@ function uiDefinition(name) {
  * @param {Array<{path: string, sessionIds: string[]}>} [options.workspaces] workspace registry rows
  * @param {object} [options.attachments] fake attachment store (`saveImage`)
  * @param {object} [options.llm] fake LLM registry (`resolveModelInfo`)
+ * @param {object} [options.uiAutomationVisibility] fake suppression service
  * @param {string} [options.workspacePath] allowed workspace path (defaults to the repo)
  * @param {string} [options.parentId] calling session id
  * @returns {Promise<object>} harness
@@ -90,12 +91,25 @@ export async function createPluginHarness(options = {}) {
   const logs = []
   const activations = []
   const childAgents = []
+  const effectDisposers = []
+  const suppressionCalls = []
+  const releases = []
   let pending
   let disposeCount = 0
+
+  const visibility = options.uiAutomationVisibility === undefined
+    ? undefined
+    : {
+        suppress(key, applies) {
+          suppressionCalls.push({ key, applies })
+          return () => { releases.push(key) }
+        },
+      }
 
   const log = level => (message, error) => { logs.push({ level, message, error }) }
 
   const ctx = {
+    ...visibility === undefined ? {} : { uiAutomationVisibility: visibility },
     logger: { info: log('info'), warn: log('warn'), error: log('error') },
     tools: hostTools,
     systemPrompt: {
@@ -111,7 +125,18 @@ export async function createPluginHarness(options = {}) {
     get(name) {
       if (name === 'attachments') return options.attachments
       if (name === 'llm') return options.llm
+      if (name === 'uiAutomationVisibility') return visibility
       return undefined
+    },
+    inject(deps, callback) {
+      const ready = deps.every(name => ctx.get(name) !== undefined)
+      if (ready) callback(ctx)
+      return { dispose: async () => {} }
+    },
+    effect(execute) {
+      const dispose = execute()
+      if (typeof dispose === 'function') effectDisposers.push(dispose)
+      return () => {}
     },
     subagents: {
       async startActivation(spec) {
@@ -179,6 +204,11 @@ export async function createPluginHarness(options = {}) {
     /** Invoke the tool as the parent agent would. */
     async invoke(instruction, exec = {}) {
       return await operateRegistration().definition.execute({ instruction }, { agent: parentAgent, signal: exec.signal, arguments: { instruction } })
+    },
+    suppressionCalls,
+    releases,
+    disposeEffects() {
+      for (const dispose of effectDisposers.splice(0)) dispose()
     },
     get disposeCount() { return disposeCount },
     resetDisposeCount() { disposeCount = 0 },
