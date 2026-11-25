@@ -9,6 +9,7 @@
         timeoutMs: 180000
         maxSteps: 40
         attachImages: true
+        hideUnderlyingTools: true
         enabledSessionIds: ''
         allowedWorkspacePaths: ''
         allowAllSessions: false

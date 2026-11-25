@@ -1,6 +1,6 @@
 {
   "name": "dsh-ui-nl",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "description": "Natural-language UI operation for DSH: one tool (ui_operate) that hands an instruction to a subagent owning the numbered-image UI automation tools, then returns the subagent's report and, when asked, the screenshot.",
   "license": "MIT",
