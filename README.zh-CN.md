@@ -15,7 +15,7 @@
 
 ## 依赖（必须先装）
 
-本 bundle **依赖 `dsh-ui-automation`**，自身不提供任何界面控制能力。请先安装并启用它：截图标号、AT-SPI 元素枚举和 XTEST 输入都由它完成。
+本 bundle **依赖 `dsh-ui-automation`**，自身不提供任何界面控制能力。请先安装并启用它：截图标号、AT-SPI 元素枚举和 XTEST 输入都由它完成。下面的"工具接管"需要 **2.2.0 或更新**；更老版本上 `ui_operate` 仍可用，但六个原始工具依旧可见（缺少抑制服务，因此不会隐藏）。
 
 ```bash
 # 在已经内置该插件的 profile 里，或作为 bundle 安装
@@ -88,6 +88,7 @@ dsh plugin --profile <profile> add link:/path/to/dsh-ui-automation-plugin
     timeoutMs: 180000         # 单次总超时，5000–1800000；超时会取消子代理并返回 TIMEOUT
     maxSteps: 40              # 子代理 UI 工具调用预算，1–500；超出后 guard 拒绝
     attachImages: true        # 把报告的截图存成 attachment 并作为图片块返回
+    hideUnderlyingTools: true # 接管底层 6 个 ui_* 工具（见下）；false 保留两套工具面
     enabledSessionIds: ''     # 额外允许调用 ui_operate 的会话 ID
     allowedWorkspacePaths: '' # 允许调用 ui_operate 的工作区；留空 = 本插件目录
     allowAllSessions: false   # 对所有会话开放（它会驱动真实桌面）
@@ -95,6 +96,24 @@ dsh plugin --profile <profile> add link:/path/to/dsh-ui-automation-plugin
 
 `timeoutMs` 同时会在加载时写入工具定义的 pipeline 上限；修改后请重启 profile。
 
+### 子代理模型设置
+
+模型用**两个明确的字符串字段** `modelProvider` 与 `model` 配置（profile 的 `cordis.patch.yml`，或 **Plugins** 里本 bundle 的页面）：
+
+```yaml
+- id: ui-nl
+  name: 'dsh-ui-nl'
+  config:
+    modelProvider: new-api          # LLM 注册表声明的 provider id
+    model: deepseek-v4.1-flash-1017 # 支持图片输入的模型 id
+```
+
+- **留空即继承。** 两个都留空（默认）时子代理使用调用方当前路由，单模型部署无需配置。
+- **成对设置。** 只设 `model` 不设 `modelProvider` 会在加载时失败；二者组成一条路由。
+- **启动子代理前校验。** 显式配置的路由会先 `llm.resolveModelInfo(provider, model)`，再用 `llm.listModels(provider)` 检查是否在列；provider 不存在、模型未被该 provider 声明、或路由无法解析时立即返回 `MODEL_ROUTE`（错误里带当前可用路由），不会启动子代理。路由能解析但声明只接受文本时同样 `MODEL_ROUTE`，因为标号截图是以图片块送达子代理的。
+- **继承路由只校验图片能力**；继承路由解析失败只记 warning 继续，因为调用方自己的路由在首次请求前可能还不可解析。
+
+**为什么不是下拉？** DSH Web 客户端不会按插件 schema 生成表单：settings 服务只暴露 volatile 字段表单，而没有任何随包客户端按 schema 建页面；官方配置页是手写的浏览器 bundle，第三方插件不允许以模块方式引入。做模型下拉需要额外的 client 半 + 目录 Remote 方法；本 bundle 有意采用文档化的字段形态，并配合快速失败与错误里的可用路由。Host 侧 `Config` schema 仍声明这两个字段，将来有按 schema 渲染的客户端时它们就是普通文本字段。
 ## 子代理为什么能拿到工具（以及为什么不走工作区白名单）
 
 `dsh-ui-automation` 用 `allowAllSessions` / `enabledSessionIds` / `allowedWorkspacePaths` 控制可见性。但"启动时把这个子代理加进白名单"并不可靠：agent loop 在 `system-prompt/assemble` 和 `agent/pre-step` **之前**就解析工具可见性（`ctx.tools.resolve`），而子代理在 prompt 被接受后立刻开始第一步——父 Agent 在工具调用里做的工作区 attach 可能输掉这场竞争，导致第一步看不到 `ui_*` 工具。
@@ -108,7 +127,23 @@ dsh plugin --profile <profile> add link:/path/to/dsh-ui-automation-plugin
 1. `ui_operate` 的 `when` 对 `origin === 'subagent'` 的会话返回 `false`。
 2. 即使定义被解析到，`execute()` 对子代理调用方也直接抛错。
 3. 子代理 scope 被限制为六个 UI 工具，`ui_operate`（以及 `bash`、`write` 等）全部被遮掉。
-4. 启动子代理时传 `maxDepth: 0`，子代理运行时拒绝它再委派。
+4. 启动子代理时传 `maxDepth: 1`：运行时允许这个子代理（深度 1），但拒绝它再创建孙代理。
+
+### 接管底层工具（`hideUnderlyingTools`）
+
+安装本 bundle 后，操作桌面应该只有一条明显路径。`hideUnderlyingTools: true`（默认）时，`apply()` 通过 `dsh-ui-automation` 2.2.0 发布的 `uiAutomationVisibility` 服务抑制底层工具面：
+
+```js
+// dsh-ui-nl，注册在插件 fiber 拥有的 effect 里
+const release = ctx.uiAutomationVisibility.suppress('ui-nl', (sessionId, agent) => gate.allowed(sessionId, agent))
+```
+
+- 抑制生效时，能调用 `ui_operate` 的会话不再解析到 `ui_screenshot`/`ui_click`/`ui_double_click`/`ui_scroll`/`ui_drag`/`ui_type`，也看不到标号图片提示段；它看到的唯一 UI 工具是 `ui_operate`。
+- 子代理会话在 `dsh-ui-automation` 内部被豁免（本插件的门禁也拒绝子代理），所以子代理仍能解析到六个工具——它们是通过每个子代理自己的 scope 授权拿到的，不依赖白名单。
+- 判定谓词就是本插件自己的门禁：`allowedWorkspacePaths` / `enabledSessionIds` 之外的会话保留原始工具，不会两套都没有。
+- 抑制属于本插件 fiber：禁用或卸载 `dsh-ui-nl` 会释放，六个工具对所有允许的会话恢复可见。单独安装 `dsh-ui-automation` 行为不变。
+
+**回滚方式：** 在 `ui-nl` 行设置 `hideUnderlyingTools: false`（两套工具面都可见，即 0.2.0 之前的行为），或移除 `dsh-ui-nl`。若 `dsh-ui-automation` 低于 2.2.0，抑制服务不存在，接管子 fiber 不会激活，两套工具面都保持可见。
 
 ### 数据安全
 
@@ -119,11 +154,22 @@ dsh plugin --profile <profile> add link:/path/to/dsh-ui-automation-plugin
 ## 开发
 
 ```bash
-node --test test/*.test.mjs   # 33 个测试，不连模型
+node --test test/*.test.mjs   # 49 个测试，不连模型
 ```
 
-- `test/operate.test.mjs` —— 工具 schema、prompt 投递、文本透传、图片块、失败码、超时/取消、步数预算、工作区门禁、配置与 prompt 辅助函数。
+- `test/operate.test.mjs` —— 工具 schema、prompt 投递、文本透传、图片块、失败码、超时/取消、步数预算、工作区门禁、接管注册、配置与 prompt 辅助函数。
 - `test/integration.test.mjs` —— 在裸 Cordis context 里挂真实的 `@deepseek-ai/dsh-tools` 与 `@deepseek-ai/dsh-system-prompt`：六个工具在子代理 scope 解析、`ui_operate`/`bash` 被遮、guard 生效。
+- `test/visibility.test.mjs` —— **两个真插件**挂进同一个裸 Cordis 宿主：顶层只解析到 `ui_operate`，子代理只解析到六个工具，卸载 ui-nl 后六个工具恢复，`hideUnderlyingTools: false` 两套都在，门禁外的会话保留原始工具；并覆盖子代理模型的全部情形（合法路由、不存在的 provider/model、不在列表的模型、纯文本路由、llm 服务缺失、只设 `model`）。
+
+### 真实模型端到端
+
+下面是真正跑通的（非桩）端到端：临时 Xvfb + 私有 D-Bus + GTK3 fixture，临时 profile（`/tmp/dsh-ui-nl-e2e`）复用本机模型路由与凭据库，一句自然语言：
+
+```
+dsh --profile e2e headless "看看界面上有什么，并给我一张图"
+```
+
+结果（exit 0）：主 Agent 调用 `ui_operate`；子代理对 `:150` 截图（`shot-20261125-064507-202324-1.png`，582×466，6 个编号目标），描述 fixture，工具结果携带 `[{type:'image', attachment:{id:'sha256:accc…', mediaType:'image/png'}}, {type:'text', …}]`；主 Agent 随后汇报了编号控件与状态行。子代理会话（记录 `ui_screenshot` 的图片块）和主会话（记录 `ui_operate` 返回同一 attachment）都是证据；这次运行还抓出了 `lib/operate.js` 的 `maxDepth` 错误（传 `0` 会拒绝子代理本身，应为 `1`：允许子代理、拒绝孙代理），已修复。注意临时 profile 对两个插件开了 `allowAllSessions: true`，**因为它的 display 是一次性 Xvfb**；门禁本身由上面的测试覆盖。
 
 临时 profile 安装冒烟（不要动 Web profile）：
 
@@ -138,6 +184,7 @@ DSH_HOME="$TMP" dsh --profile smoke --dump-config | sed -n '/dsh-ui-nl/,$p'
 ## 已知限制
 
 - 子代理**只有**六个 UI 工具：不能读文件、不能跑命令、不能给主 Agent 发消息。这是有意为之，所以它的汇报必须自包含。
+- 模型选择是配置字段对而不是下拉，原因见[子代理模型设置](#子代理模型设置)。
 - 子代理的系统提示仍是 Host 组合的提示（被遮掉的工具段不会被重写），`dsh-ui-automation` 自己的标号图片提示段**不会**挂给子代理；操作规则写在子代理任务 prompt 里。
 - 图片依赖子代理模型路由；纯文本路由会以 `MODEL_ROUTE` 快速失败。
 - 只封装标号截图契约：没有坐标寻址、没有窗口启动、没有可访问性名称寻址。
