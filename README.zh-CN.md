@@ -22,7 +22,14 @@
 dsh plugin --profile <profile> add link:/path/to/dsh-ui-automation-plugin
 ```
 
-然后安装本 bundle（Plugins → Add plugin → 本地目录，或用 `plugin_manager` 的 `install_bundle` 指向本目录绝对路径）。依赖在调用时校验：六个 `ui_*` 工具缺任一，`ui_operate` 返回 `UI_TOOLS_UNAVAILABLE`，并且不会启动子代理。
+然后安装本 bundle —— 可以从 GitHub 装，也可以从本地目录装：
+
+```bash
+dsh plugin --profile <profile> add github:bot-for-imitoy/dsh-ui-nl
+# 或：dsh plugin --profile <profile> add link:/path/to/dsh-ui-nl
+```
+
+（Plugins → Add plugin → 本地目录、或用 `plugin_manager` 的 `install_bundle` 指向本目录绝对路径也可以。）依赖在调用时校验：六个 `ui_*` 工具缺任一，`ui_operate` 返回 `UI_TOOLS_UNAVAILABLE`，并且不会启动子代理。
 
 仅支持 Linux（X11/XTEST）。子代理的模型必须支持图片输入（截图以图片块送达子代理）；`ui_operate` 会预检路由，模型声明为纯文本时以 `MODEL_ROUTE` 失败。
 

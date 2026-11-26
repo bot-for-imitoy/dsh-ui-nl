@@ -22,7 +22,14 @@ This bundle **depends on `dsh-ui-automation`** and provides no UI control of its
 dsh plugin --profile <profile> add link:/path/to/dsh-ui-automation-plugin
 ```
 
-Then install this bundle (Plugins → Add plugin → local directory, or `plugin_manager` `install_bundle` with the absolute directory). The dependency is checked at call time: if any of the six `ui_*` tools is missing, `ui_operate` returns `UI_TOOLS_UNAVAILABLE` and starts nothing.
+Then install this bundle — from GitHub, or from a local checkout:
+
+```bash
+dsh plugin --profile <profile> add github:bot-for-imitoy/dsh-ui-nl
+# or: dsh plugin --profile <profile> add link:/path/to/dsh-ui-nl
+```
+
+(Plugins → Add plugin → local directory and `plugin_manager` `install_bundle` work too.) The dependency is checked at call time: if any of the six `ui_*` tools is missing, `ui_operate` returns `UI_TOOLS_UNAVAILABLE` and starts nothing.
 
 Linux only (X11/XTEST). The child's model must accept image input, because a screenshot reaches it as an image block; `ui_operate` preflights the route and fails with `MODEL_ROUTE` when the resolved model declares text-only input.
 
